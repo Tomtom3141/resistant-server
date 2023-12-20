@@ -17,5 +17,25 @@ Each individual user will have the following
 - files or webpages that they wish to store into the distributed web server
 - the user interface executable that adds the files into the system across all if not most hosts
 
+# Steps to Complete
+1. Host Setup:
+    - Develop and implement the host setup software to prime storage space for synchronization.
+    - Ensure that hosts can communicate and synchronize storage spaces uniformly.
+
+2. User System Interface:
+    - Develop a user-friendly interface for users to add their files or website data onto the distributed system.
+    - Implement synchronization functionality for user-added files across all hosts.
+
+3. File Roster Management:
+    - Develop a robust system for maintaining an updated file roster on every host.
+    - Implement mechanisms to handle added or removed files in accordance with user actions.
+
+4. Host Monitoring and Sync Mechanism:
+    - Implement a system to monitor hosts' online/offline status.
+    - Develop a sync mechanism to ensure that new files are added when a host comes back online.
+
+5. Testing and Documentation:
+    - Test the system thoroughly to identify and fix any bugs or issues.
+    - Provide clear documentation for hosts and users on how to set up and use the system.
 # Notes
 - There must be a check for host that should the go offline and come back online again there is a sync measure to ensure that new files are added
