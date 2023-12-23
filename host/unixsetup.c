@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <curl/curl.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
@@ -41,10 +42,8 @@ int main(int argc, char **argv)
         perror("Error connecting to peers");
         return EXIT_FAILURE;
     }
-
-    // Close the file
-    fclose(roster);
-    printf("Roster has been successfully created\n");
+    if(totalHosts == 0) printf("First time startup detected...\n");
+    if(liveHosts == 0) printf("Server completely offline. Initializing...\n");
 
     // Setup storage medium with proper formatting
     // ...
@@ -58,7 +57,9 @@ int main(int argc, char **argv)
 
     // Finish setup
     // ...
-
+    // Close the file
+    fclose(roster);
+    printf("Roster has been successfully created\n");
     printf("Successfully run host setup\n");
     return EXIT_SUCCESS;
 }
@@ -109,5 +110,51 @@ int peerSync(int total, int live, time_t lastTime){
 
 // When for peers connect to obtain relevant host info
 int peerSend(){
+    CURL* curl;
+    CURLcode res;
+
+    // Initialize libcurl
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+
+    // Create a curl handle
+    curl = curl_easy_init();
+    if (!curl) {
+        fprintf(stderr, "Error initializing libcurl\n");
+        return EXIT_FAILURE;
+    }
+
+    // Set the URL to test site
+    curl_easy_setopt(curl, CURLOPT_URL, "http://httpbin.org/ip");
+
+    // Create a buffer to store the response
+    char responseBuffer[256];
+    responseBuffer[0] = '\0';
+
+    // Set the write callback function
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, responseBuffer);
+
+    // Perform the HTTP request
+    res = curl_easy_perform(curl);
+
+    // Check for errors
+    if (res != CURLE_OK) {
+        fprintf(stderr, "Failed to obtain machine ip address: %s\n", curl_easy_strerror(res));
+    } else {
+        // Print the external IP address
+        printf("External IP Address: %s\n", responseBuffer);
+    }
+
+    // Clean up
+    curl_easy_cleanup(curl);
+    curl_global_cleanup();
+
     return EXIT_SUCCESS;
+}
+
+// Callback function for libcurl to handle the response
+size_t writeCallback(void* contents, size_t size, size_t nmemb, char* buffer) {
+    size_t realsize = size * nmemb;
+    strcat(buffer, (char*)contents);
+    return realsize;
 }
