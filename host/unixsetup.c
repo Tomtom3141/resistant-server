@@ -2,10 +2,55 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 #include <curl/curl.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
 
+/**
+ * @brief Gets the MAC address of the host device for proper identification
+ * 
+ * @param interface connection interface that is being used by the host
+ * @param macAddress the MAC address that is returned by the function
+ */
+void getMacAddress(char *interface, char *macAddress) {
+    struct ifreq ifr;
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (sock == -1) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    strncpy(ifr.ifr_name, interface, IFNAMSIZ - 1);
+
+    if (ioctl(sock, SIOCGIFHWADDR, &ifr) == -1) {
+        perror("Error getting MAC address");
+        close(sock);
+        exit(EXIT_FAILURE);
+    }
+
+    close(sock);
+
+    // Format the MAC address
+    sprintf(macAddress, "%02x:%02x:%02x:%02x:%02x:%02x",
+            (unsigned char) ifr.ifr_hwaddr.sa_data[0],
+            (unsigned char) ifr.ifr_hwaddr.sa_data[1],
+            (unsigned char) ifr.ifr_hwaddr.sa_data[2],
+            (unsigned char) ifr.ifr_hwaddr.sa_data[3],
+            (unsigned char) ifr.ifr_hwaddr.sa_data[4],
+            (unsigned char) ifr.ifr_hwaddr.sa_data[5]);
+}
+
+/**
+ * @brief runs the main program for hosting on a unix based os and runs the intial setup if no other cohost is found
+ * 
+ * @param argc void
+ * @param argv void
+ * @return int runtime status
+ */
 int main(int argc, char **argv)
 {
     // Generate roaster file
@@ -18,7 +63,7 @@ int main(int argc, char **argv)
     }
 
     // Convert the time to a string representation
-    char timestamp[20];
+    char timestamp[25];
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&currentTime));
 
     // Open a file for writing
@@ -30,8 +75,13 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    // Write the timestamp to the file
-    fprintf(roster, "%s\n", timestamp);
+    // Get the MAC address from the host device
+    char interface[] = "eth0"; //This must be changed to the proper network device of the host machine (default wired)
+    char macAddress[18];
+    getMacAddress(interface, macAddress);
+
+    // Write the timestamp and MAC address to the file
+    fprintf(roster, "Startup time for device %s at %s\n", macAddress, timestamp);
 
     //Get the host information
     int totalHosts;
@@ -46,7 +96,25 @@ int main(int argc, char **argv)
     if(liveHosts == 0) printf("Server completely offline. Initializing...\n");
 
     // Setup storage medium with proper formatting
-    // ...
+    printf("Formatting the entire drive into NTFS format...\n");
+
+    // Assume the device path you want to format (e.g., /dev/sda1)
+    char devicePath[] = "/dev/sda1"; //Change if needed (default currently at /dev/sda1)
+
+    // Construct the command to format the drive
+    char command[100];
+    sprintf(command, "mkfs.ntfs %s", devicePath);
+    // Execute the command
+    int result = system(command);
+    // Check the result of the formatting operation
+    if (result == 0) {
+        printf("Drive formatted successfully!\n");
+    } else {
+        //Exit the program due to format failure
+        perror("Formatting failed. Please reformat drive to NTFS.\n");
+        return EXIT_FAILURE;
+    }
+
 
     // Load storage medium with any server information
     // Load balancing effort
@@ -64,7 +132,14 @@ int main(int argc, char **argv)
     return EXIT_SUCCESS;
 }
 
-// Connect to peers to obtain relevant server information
+/**
+ * @brief Connect to peers to obtain relevant server information
+ * 
+ * @param total the total number of hosts that currently exist
+ * @param live the number of live hosts currently online and hosting
+ * @param lastTime last timestamp of closest peer
+ * @return int negative if error found
+ */
 int peerSync(int total, int live, time_t lastTime){
     // IP address and port to connect to
     // Placeholder only for peers and must be updated later

@@ -5,7 +5,59 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <Windows.h>
+#include <winsock2.h>
+#include <iphlpapi.h>
 
+#pragma comment(lib, "IPHLPAPI.lib")
+
+/**
+ * @brief Gets the MAC address of the host device for proper identification
+ * 
+ * @param macAddress MAC address that is returned by the function
+ */
+void getMacAddress(char *macAddress) {
+    PIP_ADAPTER_ADDRESSES adapterAddresses = NULL;
+    ULONG bufferSize = 0;
+
+    if (GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, NULL, NULL, &bufferSize) == ERROR_BUFFER_OVERFLOW) {
+        adapterAddresses = (PIP_ADAPTER_ADDRESSES)malloc(bufferSize);
+        if (adapterAddresses == NULL) {
+            perror("Memory allocation failed");
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        perror("Error getting adapter addresses");
+        exit(EXIT_FAILURE);
+    }
+
+    if (GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, NULL, adapterAddresses, &bufferSize) == NO_ERROR) {
+        PIP_ADAPTER_ADDRESSES adapter = adapterAddresses;
+        while (adapter) {
+            if (adapter->PhysicalAddressLength > 0) {
+                for (DWORD i = 0; i < adapter->PhysicalAddressLength; i++) {
+                    sprintf(macAddress + i * 3, "%02X:", adapter->PhysicalAddress[i]);
+                }
+                macAddress[adapter->PhysicalAddressLength * 3 - 1] = '\0'; // Remove the trailing ":"
+                break; // Stop after the first non-empty MAC address
+            }
+            adapter = adapter->Next;
+        }
+    } else {
+        perror("Error getting adapter addresses");
+        free(adapterAddresses);
+        exit(EXIT_FAILURE);
+    }
+
+    free(adapterAddresses);
+}
+
+/**
+ * @brief runs the main program for hosting on a unix based os and runs the intial setup if no other cohost is found
+ * 
+ * @param argc void
+ * @param argv void
+ * @return int runtime status
+ */
 int main(int argc, char **argv)
 {
     // Generate roaster file
@@ -18,7 +70,7 @@ int main(int argc, char **argv)
     }
 
     // Convert the time to a string representation
-    char timestamp[20];
+    char timestamp[25];
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&currentTime));
 
     // Open a file for writing
@@ -30,8 +82,12 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    // Write the timestamp to the file
-    fprintf(roster, "%s\n", timestamp);
+    // Get the MAC address from the host device
+    char macAddress[18];
+    getMacAddress(macAddress);
+
+    // Write the timestamp and MAC address to the file
+    fprintf(roster, "Startup time for device %s at %s\n", macAddress, timestamp);
 
     //Get the host information
     int totalHosts;
@@ -48,7 +104,26 @@ int main(int argc, char **argv)
     printf("Roster has been successfully created\n");
 
     // Setup storage medium with proper formatting
-    // ...
+    printf("Formatting the entire drive into NTFS format...\n");
+
+    // Assume the drive letter and partition number you want to format
+    char driveLetter = 'C'; //Must be changed
+    int partitionNumber = 1; //Must be changed
+
+    // Construct the command to format the drive
+    char command[100];
+    sprintf(command, "format %c: /FS:NTFS /Q", driveLetter);
+
+    // Execute the command
+    int result = system(command);
+
+    // Check the result of the formatting operation
+    if (result == 0) {
+        printf("Drive formatted successfully!\n");
+    } else {
+        printf("Formatting failed. Please format drive into NTFS.\n");
+        return EXIT_FAILURE;
+    }
 
     // Load storage medium with any server information
     // Load balancing effort
@@ -64,7 +139,14 @@ int main(int argc, char **argv)
     return EXIT_SUCCESS;
 }
 
-// Connect to peers to obtain relevant server information
+/**
+ * @brief Connect to peers to obtain relevant server information
+ * 
+ * @param total the total number of hosts that currently exist
+ * @param live the number of live hosts currently online and hosting
+ * @param lastTime last timestamp of closest peer
+ * @return int negative if error found
+ */
 int peerSync(int total, int live, time_t lastTime){
     // IP address and port to connect to
     // Placeholder only for peers and must be updated later
@@ -110,5 +192,51 @@ int peerSync(int total, int live, time_t lastTime){
 
 // When for peers connect to obtain relevant host info
 int peerSend(){
+    CURL* curl;
+    CURLcode res;
+
+    // Initialize libcurl
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+
+    // Create a curl handle
+    curl = curl_easy_init();
+    if (!curl) {
+        fprintf(stderr, "Error initializing libcurl\n");
+        return EXIT_FAILURE;
+    }
+
+    // Set the URL to test site
+    curl_easy_setopt(curl, CURLOPT_URL, "http://httpbin.org/ip");
+
+    // Create a buffer to store the response
+    char responseBuffer[256];
+    responseBuffer[0] = '\0';
+
+    // Set the write callback function
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, responseBuffer);
+
+    // Perform the HTTP request
+    res = curl_easy_perform(curl);
+
+    // Check for errors
+    if (res != CURLE_OK) {
+        fprintf(stderr, "Failed to obtain machine ip address: %s\n", curl_easy_strerror(res));
+    } else {
+        // Print the external IP address
+        printf("External IP Address: %s\n", responseBuffer);
+    }
+
+    // Clean up
+    curl_easy_cleanup(curl);
+    curl_global_cleanup();
+
     return EXIT_SUCCESS;
+}
+
+// Callback function for libcurl to handle the response
+size_t writeCallback(void* contents, size_t size, size_t nmemb, char* buffer) {
+    size_t realsize = size * nmemb;
+    strcat(buffer, (char*)contents);
+    return realsize;
 }
