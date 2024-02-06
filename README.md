@@ -1,5 +1,5 @@
 # resistant-server
-This is a work in progress for a distributed web server that allows for websites to be displayed on the internet and for files to be stored remotely without worry of being taken down or having interrupted service by having a hosting service that is distributed among the storage space of many hosts similar to p2p. It will also allow for websites to be stored on this main web server therefore creating a resilitent space for web hosting.
+This is a work in progress for a distributed web server that allows for websites to be displayed on the internet and for files to be stored remotely without worry of being taken down or having interrupted service by having a hosting service that is distributed among the storage space of many hosts similar to p2p. It will also allow for websites to be stored on this main web server therefore creating a resilient space for web hosting.
 # Potential Problems
 Although very similar to how torrents function this has the necessity of an updated file roster on every host in order to keep track of all files present on the overall web server including added or removed files in accordance with user actions.
 # Current Approach
