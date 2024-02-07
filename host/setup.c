@@ -21,11 +21,11 @@
  * 
  * @param argc void
  * @param argv void
- * @return int runtime status
+ * @return int runtime status is 1 if errors occured
  */
 int main(int argc, char **argv)
 {
-    // Open a file for writing
+    // Open the roster for writing
     FILE* roster = fopen("roster.txt", "w");
 
     // Check if the file was opened successfully
