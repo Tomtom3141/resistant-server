@@ -8,41 +8,13 @@
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
-
-/**
- * @brief Gets the MAC address of the host device for proper identification
- * 
- * @param interface connection interface that is being used by the host
- * @param macAddress the MAC address that is returned by the function
- */
-void getMacAddress(char *interface, char *macAddress) {
-    struct ifreq ifr;
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
-
-    if (sock == -1) {
-        perror("Socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-
-    strncpy(ifr.ifr_name, interface, IFNAMSIZ - 1);
-
-    if (ioctl(sock, SIOCGIFHWADDR, &ifr) == -1) {
-        perror("Error getting MAC address");
-        close(sock);
-        exit(EXIT_FAILURE);
-    }
-
-    close(sock);
-
-    // Format the MAC address
-    sprintf(macAddress, "%02x:%02x:%02x:%02x:%02x:%02x",
-            (unsigned char) ifr.ifr_hwaddr.sa_data[0],
-            (unsigned char) ifr.ifr_hwaddr.sa_data[1],
-            (unsigned char) ifr.ifr_hwaddr.sa_data[2],
-            (unsigned char) ifr.ifr_hwaddr.sa_data[3],
-            (unsigned char) ifr.ifr_hwaddr.sa_data[4],
-            (unsigned char) ifr.ifr_hwaddr.sa_data[5]);
-}
+#ifdef _WIN32
+    #include "win.h"
+#elif __unix__
+    #include "unix.h"
+#else
+    #error "Operating system detection is not supported on this platform."
+#endif
 
 /**
  * @brief runs the main program for hosting on a unix based os and runs the intial setup if no other cohost is found
@@ -53,19 +25,6 @@ void getMacAddress(char *interface, char *macAddress) {
  */
 int main(int argc, char **argv)
 {
-    // Generate roaster file
-    time_t currentTime = time(NULL);
-
-    // Check if the time retrieval was successful
-    if (currentTime == -1) {
-        perror("Error getting current time");
-        return EXIT_FAILURE;
-    }
-
-    // Convert the time to a string representation
-    char timestamp[25];
-    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&currentTime));
-
     // Open a file for writing
     FILE* roster = fopen("roster.txt", "w");
 
@@ -104,9 +63,100 @@ int main(int argc, char **argv)
     if(liveHosts == 0) printf("Server completely offline. Initializing...\n");
 
     // Get the MAC address from the host device
-    char interface[] = "eth0"; //This must be changed to the proper network device of the host machine (default wired)
+    // For the case of windows host machines
+    #ifdef _WIN32
+        PIP_ADAPTER_ADDRESSES adapterAddresses = NULL;
+        ULONG bufferSize = 0;
+        DWORD result = 0;
+
+        // Call GetAdaptersAddresses with a NULL buffer to get the required buffer size
+        result = GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, NULL, NULL, &bufferSize);
+        if (result == ERROR_BUFFER_OVERFLOW) {
+            adapterAddresses = (PIP_ADAPTER_ADDRESSES)malloc(bufferSize);
+            if (adapterAddresses == NULL) {
+                perror("Memory allocation failed");
+                return EXIT_FAILURE;
+            }
+            // Call GetAdaptersAddresses again with the allocated buffer
+            result = GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, NULL, adapterAddresses, &bufferSize);
+            if (result == NO_ERROR) {
+                PIP_ADAPTER_ADDRESSES adapter = adapterAddresses;
+                while (adapter) {
+                    printf("Interface: %S\n", adapter->FriendlyName);
+                    adapter = adapter->Next;
+                }
+            } else {
+                perror("Error getting adapter addresses");
+                free(adapterAddresses);
+                return EXIT_FAILURE;
+            }
+        } else {
+            perror("Error getting adapter addresses");
+            return EXIT_FAILURE;
+        }
+
+    free(adapterAddresses);
+    // For the case of unix and linux machines
+    #elif __unix__
+        struct ifaddrs *ifap, *ifa;
+        char host[NI_MAXHOST];
+
+        // Get the list of network interfaces
+        if (getifaddrs(&ifap) == -1) {
+            perror("Failure to get network interfaces");
+            exit(EXIT_FAILURE);
+        }
+
+        // Iterate over the list of interfaces and print their names
+        for (ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr == NULL) continue;
+
+            printf("Interface: %s\n", ifa->ifa_name);
+
+            // Optionally, you can print the address of the interface
+            // if (getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr), host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST) == 0) {
+            //     printf("Address: %s\n", host);
+            // }
+        }
+
+        // Free the memory allocated by getifaddrs
+        freeifaddrs(ifap);
+    #endif
+    // Get the specified interface requested
+    printf("Please select the desired interface to connect to the server: ");
+    char interface[20];
+    // Read user input using fgets
+    if (fgets(interface, sizeof(interface), stdin) != NULL) {
+        // Remove the newline character if present
+        char *newline = strchr(interface, '\n');
+        if (newline != NULL) {
+            *newline = '\0';
+        }
+
+        printf("You selected the interface: %s\n", interface);
+    } else {
+        printf("Error reading interface input\n");
+        return EXIT_FAILURE;
+    }
     char macAddress[18];
-    getMacAddress(interface, macAddress);
+    #ifdef _WIN32
+        getMacAddress(macAddress);
+    #elif __unix__
+        getMacAddress(interface, macAddress);
+    #endif
+
+    // Get the current time
+    time_t currentTime = time(NULL);
+
+    // Check if the time retrieval was successful
+    if (currentTime == -1) {
+        perror("Error getting current time");
+        return EXIT_FAILURE;
+    }
+
+    // Convert the time to a string representation
+    char timestamp[25];
+    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", localtime(&currentTime));
 
     // Write the timestamp and MAC address to the file
     fprintf(roster, "Startup time for device %s at %s\n", macAddress, timestamp);
@@ -115,22 +165,41 @@ int main(int argc, char **argv)
     // Setup storage medium with proper formatting
     printf("Formatting the entire drive into NTFS format...\n");
 
-    // Assume the device path you want to format (e.g., /dev/sda1)
-    char devicePath[] = "/dev/sda1"; //Change if needed (default currently at /dev/sda1)
-
     // Construct the command to format the drive
     char command[100];
-    sprintf(command, "mkfs.ntfs %s", devicePath);
-    // Execute the command
-    int result = system(command);
-    // Check the result of the formatting operation
-    if (result == 0) {
-        printf("Drive formatted successfully!\n");
-    } else {
-        //Exit the program due to format failure
-        perror("Formatting failed. Please reformat drive to NTFS.\n");
-        return EXIT_FAILURE;
-    }
+    // Format for windows systems
+    #ifdef _WIN32
+        // Assume the drive letter and partition number you want to format
+        char driveLetter = 'C'; //Must be changed
+
+        sprintf(command, "format %c: /FS:NTFS /Q", driveLetter);
+
+        // Execute the command
+        int result = system(command);
+
+        // Check the result of the formatting operation
+        if (result == 0) {
+            printf("Drive formatted successfully!\n");
+        } else {
+            printf("Formatting failed. Please format drive into NTFS.\n");
+            return EXIT_FAILURE;
+        }
+    // Assume the device path you want to format (e.g., /dev/sda1)
+    #elif __unix__
+        char devicePath[] = "/dev/sda1"; //Change if needed (default currently at /dev/sda1)
+
+        sprintf(command, "mkfs.ntfs %s", devicePath);
+        // Execute the command
+        int result = system(command);
+        // Check the result of the formatting operation
+        if (result == 0) {
+            printf("Drive formatted successfully!\n");
+        } else {
+            //Exit the program due to format failure
+            perror("Formatting failed. Please reformat drive to NTFS.\n");
+            return EXIT_FAILURE;
+        }
+    #endif
 
 
     // Load storage medium with any server information
