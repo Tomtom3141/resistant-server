@@ -75,6 +75,34 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+    // The total number of hosts that exist or that have registered
+    int totalHosts;
+    // The current number of running hosts
+    int liveHosts;
+    // The last obtained time from the nearest host peer
+    time_t peerTime;
+    //Get the host information
+    int connectionFail = peerSync(totalHosts, liveHosts, peerTime);
+
+    // Check if the roster file existed before
+    fseek(roster, 0, SEEK_END);
+    if (ftell(file) == 0) { //File is empty meaning this host has never hosted before
+        // Fill with other host information if roster file did not exist
+        // Connect to other peers to get information
+        // ...
+        // Set the important variables obtained from the connection
+    }
+
+    // If unable to connect to other peers
+    if(connectionFail){
+        perror("Error connecting to peers");
+        return EXIT_FAILURE;
+    }
+    // There are no hosts present and this is the first server
+    if(totalHosts == 0) printf("First time startup detected...\n");
+    // There are no hosts online currently meaning the distributed server is completely offline
+    if(liveHosts == 0) printf("Server completely offline. Initializing...\n");
+
     // Get the MAC address from the host device
     char interface[] = "eth0"; //This must be changed to the proper network device of the host machine (default wired)
     char macAddress[18];
@@ -83,17 +111,6 @@ int main(int argc, char **argv)
     // Write the timestamp and MAC address to the file
     fprintf(roster, "Startup time for device %s at %s\n", macAddress, timestamp);
 
-    //Get the host information
-    int totalHosts;
-    int liveHosts;
-    time_t peerTime;
-    int connectionFail = peerSync(totalHosts, liveHosts, peerTime);
-    if(connectionFail){
-        perror("Error connecting to peers");
-        return EXIT_FAILURE;
-    }
-    if(totalHosts == 0) printf("First time startup detected...\n");
-    if(liveHosts == 0) printf("Server completely offline. Initializing...\n");
 
     // Setup storage medium with proper formatting
     printf("Formatting the entire drive into NTFS format...\n");
