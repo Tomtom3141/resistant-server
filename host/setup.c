@@ -26,7 +26,7 @@
 int main(int argc, char **argv)
 {
     // Open the roster for writing
-    FILE* roster = fopen("roster.txt", "w");
+    FILE* roster = fopen("roster.txt", "r+");
 
     // Check if the file was opened successfully
     if (roster == NULL) {
@@ -40,15 +40,15 @@ int main(int argc, char **argv)
     int liveHosts;
     // The last obtained time from the nearest host peer
     time_t peerTime;
-    //Get the host information
-    int connectionFail = peerSync(totalHosts, liveHosts, peerTime);
+    //Gets the status  of connecting to peers
+    int connectionFail = 0;
 
     // Check if the roster file existed before
     fseek(roster, 0, SEEK_END);
-    if (ftell(file) == 0) { //File is empty meaning this host has never hosted before
+    if (ftell(roster) == 0) { //File is empty meaning this host has never hosted before
         // Fill with other host information if roster file did not exist
         // Connect to other peers to get information
-        // ...
+        connectionFail = peerSync(totalHosts, liveHosts, peerTime);
         // Set the important variables obtained from the connection
     }
 
@@ -122,26 +122,26 @@ int main(int argc, char **argv)
         // Free the memory allocated by getifaddrs
         freeifaddrs(ifap);
     #endif
-    // Get the specified interface requested
-    printf("Please select the desired interface to connect to the server: ");
-    char interface[20];
-    // Read user input using fgets
-    if (fgets(interface, sizeof(interface), stdin) != NULL) {
-        // Remove the newline character if present
-        char *newline = strchr(interface, '\n');
-        if (newline != NULL) {
-            *newline = '\0';
-        }
-
-        printf("You selected the interface: %s\n", interface);
-    } else {
-        printf("Error reading interface input\n");
-        return EXIT_FAILURE;
-    }
     char macAddress[18];
     #ifdef _WIN32
         getMacAddress(macAddress);
     #elif __unix__
+        // Get the specified interface requested
+        printf("Please select the desired interface to connect to the server: ");
+        char interface[20];
+        // Read user input using fgets
+        if (fgets(interface, sizeof(interface), stdin) != NULL) {
+            // Remove the newline character if present
+            char *newline = strchr(interface, '\n');
+            if (newline != NULL) {
+                *newline = '\0';
+            }
+
+            printf("You selected the interface: %s\n", interface);
+        } else {
+            printf("Error reading interface input\n");
+            return EXIT_FAILURE;
+        }
         getMacAddress(interface, macAddress);
     #endif
 
@@ -318,4 +318,16 @@ size_t writeCallback(void* contents, size_t size, size_t nmemb, char* buffer) {
     size_t realsize = size * nmemb;
     strcat(buffer, (char*)contents);
     return realsize;
+}
+
+/**
+ * @brief This function is used to count the number of servers that are online using recursion
+ * 
+ * @param lastcount the number of online hosts last counted
+ * @return int the host currently running plus a rollcall to other servers
+ */
+int rollcall(int lastcount){
+    int count = lastcount;
+    // Connect to closes peer to increment the count
+    return count;
 }
